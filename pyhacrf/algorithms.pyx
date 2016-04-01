@@ -1,13 +1,15 @@
 #cython: boundscheck=False, wraparound=False, initializedcheck=False
+#cython: infer_types=True
 
 import numpy as np
 cimport numpy as np
 from numpy import ndarray
 from numpy cimport ndarray
-from numpy.math cimport logaddexp, INFINITY as inf
-cdef extern from "math.h" nogil :
-    double exp(double x)
-
+from numpy.math cimport INFINITY as inf
+cdef extern from "fastonebigheader.h" nogil :
+    double log "fasterlog" (double x)
+    double exp "fasterexp" (double x)
+    
 cpdef dict forward(np.ndarray[long, ndim=2] lattice, np.ndarray[double, ndim=3] x_dot_parameters, long S):
     """ Helper to calculate the forward weights.  """
     cdef dict alpha = {}
@@ -16,29 +18,34 @@ cpdef dict forward(np.ndarray[long, ndim=2] lattice, np.ndarray[double, ndim=3] 
     cdef unsigned int i0, j0, s0, i1, j1, s1, edge_parameter_index
     cdef unsigned int I, J, s
 
-    cdef unsigned int old_i0, old_j0, old_s0 
+    cdef unsigned int old_i0, old_j0, old_s0 = -1
     cdef double edge_potential
 
-    old_i0, old_j0, old_s0 = -1, -1, -1
+    cdef (int, int, int) current_state
+    cdef (int, int, int) next_state
+    cdef (int, int, int, int, int, int, int) edge
 
     for r in range(lattice.shape[0]):
-        i0, j0, s0 = lattice[r, 0], lattice[r, 1], lattice[r, 2] 
-        i1, j1, s1 = lattice[r, 3], lattice[r, 4], lattice[r, 5]
-        edge_parameter_index = lattice[r, 6]
+        edge = (lattice[r, 0], lattice[r, 1], lattice[r, 2],
+                lattice[r, 3], lattice[r, 4], lattice[r, 5],
+                lattice[r, 6])
+        i0, j0, s0 = current_state = lattice[r, 0], lattice[r, 1], lattice[r, 2]
+        next_state = lattice[r, 3], lattice[r, 4], lattice[r, 5]
+        edge_parameter_index = edge[6]
         
-        if i0 != old_i0 or j0 != old_j0 or s0 != old_s0:
-            if i0 == 0 and j0 == 0:
-                alpha[(i0, j0, s0)] = x_dot_parameters[i0, j0, s0]
+        if i0 != previous_i0 or j0 != previous_j0 or s0 != previous_s0:
+            if current_state[0] == 0 and current_state[1] == 0:
+                alpha[current_state] = x_dot_parameters[current_state]
             else:
-                alpha[(i0, j0, s0)] += x_dot_parameters[i0, j0, s0]
+                alpha[current_state] += x_dot_parameters[current_state]
 
-            old_i0, old_j0, old_s0 = i0, j0, s0
+            previous_i0, previous_j0, previous_s0 = i0, j0, s0
 
-        edge_potential = (x_dot_parameters[i1, j1, edge_parameter_index]
-                          + <double> alpha[(i0, j0, s0)])
-        alpha[(i0, j0, s0, i1, j1, s1, edge_parameter_index)] = edge_potential
-        alpha[(i1, j1, s1)] = logaddexp(<double> alpha.get((i1, j1, s1), -inf), 
-                                        edge_potential)
+        edge_potential = (x_dot_parameters[next_state[0], next_state[1], edge_parameter_index]
+                          + <double> alpha[current_state])
+        alpha[edge] = edge_potential
+        alpha[next_state] = logaddexp(<double> alpha.get(next_state, -inf), 
+                                      edge_potential)
 
     I = x_dot_parameters.shape[0] - 1
     J = x_dot_parameters.shape[1] - 1
@@ -55,7 +62,6 @@ cpdef double[:, :, ::1] forward_predict(long[:, ::1] lattice,
                                       double[:, :, ::1] x_dot_parameters, 
                                       long S) :
     """ Helper to calculate the forward weights for prediction.  """
-
     cdef double[:, :, ::1] alpha = x_dot_parameters.copy()
     alpha[:] = -inf
 
@@ -66,6 +72,21 @@ cpdef double[:, :, ::1] forward_predict(long[:, ::1] lattice,
 
     cdef double edge_potential, source_node_potential
 
+    # The lattice is an edgelist matrix where the row are of the form
+    #
+    # i0, j0, s0, i1, j1, s1, edge_parameter 
+    #
+    # where (i0, j0, s0) indexes the source node (i1, j1, s1) indexes
+    # the target node, and the edge_parameter indicates what "type" of
+    # edge this is, i.e. insertion, deletion, substitution
+    #
+    # i0 and i1 are indices to the first sequence
+    # j0 and j1 are indices to the second sequence
+    # s0 and s1 are indices to the states
+    #
+    # The edgelist is sorted by i0, j0, s0, etc. so that
+    # edge_parameter is the most quickly varying value and i0 is the
+    # least.
     for r in range(lattice.shape[0]):
         i0, j0, s0 = lattice[r, 0], lattice[r, 1], lattice[r, 2]
 
@@ -73,6 +94,7 @@ cpdef double[:, :, ::1] forward_predict(long[:, ::1] lattice,
             if i0 == 0 and j0 == 0:
                 source_node_potential = x_dot_parameters[i0, j0, s0]
             else:
+                
                 source_node_potential = (alpha[i0,j0,s0]
                                          + x_dot_parameters[i0,j0,s0])
             old_s0 = s0
@@ -93,7 +115,7 @@ cpdef double[:, :, ::1] forward_predict(long[:, ::1] lattice,
             alpha[I, J, s] = x_dot_parameters[I, J, s]
         else:
             alpha[I, J, s] += x_dot_parameters[I, J, s]
-        
+            
     return alpha
 
 
@@ -181,13 +203,15 @@ def gradient(dict alpha,
              long y,
              long I, long J, long K):
     """ Helper to calculate the marginals and from that the gradient given the forward and backward weights. """
-    cdef unsigned int n_classes = max(states_to_classes) + 1
+    cdef unsigned int n_classes = states_to_classes.max() + 1
     cdef ndarray[double] class_Z = np.zeros((n_classes,))
     cdef double Z = -inf
     cdef double weight
     cdef unsigned int k
+    cdef unsigned int state
 
-    for state, clas in enumerate(states_to_classes):
+    for state in range(n_classes) :
+        clas = states_to_classes[state]
         weight = <double> alpha[(I - 1, J - 1, state)]
         class_Z[clas] = weight
         Z = logaddexp(Z, weight)
@@ -195,6 +219,7 @@ def gradient(dict alpha,
     cdef ndarray[double, ndim=2] derivative = np.full_like(parameters, 0.0)
     cdef unsigned int i0, j0, s0, i1, j1, s1, edge_parameter_index
     cdef double alphabeta
+    cdef tuple node
 
     for node in alpha.viewkeys() | beta.viewkeys():
         if len(node) == 3:
@@ -312,3 +337,20 @@ def sparse_multiply(ndarray[double, ndim=3] answer,
                     if k < 0:
                         break
                     answer[i, j, s] += value_array[i, j, c] * dense_array[k, s]
+
+
+
+cdef double logaddexp(double x, double y) nogil :
+    cdef double tmp
+    if x == y :
+        return x + log(2)
+    else :
+        tmp = x - y
+        if tmp > 0 :
+            return x + log(1 + exp(-tmp))
+        elif tmp <= 0 :
+            return y + log(1 + exp(tmp))
+        else :
+            return tmp
+    
+
