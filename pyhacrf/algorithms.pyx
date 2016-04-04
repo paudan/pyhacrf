@@ -6,9 +6,9 @@ cimport numpy as np
 from numpy import ndarray
 from numpy cimport ndarray
 from numpy.math cimport INFINITY as inf
-cdef extern from "fastonebigheader.h" nogil :
-    np.float64_t log "fasterlog" (np.float64_t x)
-    np.float64_t exp "fasterexp" (np.float64_t x)
+cdef extern from "fastlogexp.h" nogil :
+    np.float64_t log "fastlog" (np.float64_t x)
+    np.float64_t exp "fastexp" (np.float64_t x)
     
 cpdef dict forward(np.ndarray[np.int64_t, ndim=2] lattice, np.ndarray[np.float64_t, ndim=3] x_dot_parameters, long S):
     """ Helper to calculate the forward weights.  """
