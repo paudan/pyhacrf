@@ -7,8 +7,8 @@ from numpy import ndarray
 from numpy cimport ndarray
 from numpy.math cimport INFINITY as inf
 cdef extern from "fastlogexp.h" nogil :
-    np.float64_t log "fasterlog" (np.float64_t x)
-    np.float64_t exp "fasterexp" (np.float64_t x)
+    np.float64_t log "fastlog" (np.float64_t x)
+    np.float64_t exp "fastexp" (np.float64_t x)
     
 cpdef dict forward(np.ndarray[np.int64_t, ndim=2] lattice, np.ndarray[np.float64_t, ndim=3] x_dot_parameters, long S):
     """ Helper to calculate the forward weights.  """
@@ -58,6 +58,54 @@ cpdef dict forward(np.ndarray[np.int64_t, ndim=2] lattice, np.ndarray[np.float64
 
     return alpha
 
+cpdef np.float64_t[:, :, ::1] forward_predict_adjacent(np.float64_t[:, :, ::1] x_dot_parameters,
+                                                       long S) :
+    cdef np.float64_t[:, :, ::1] alpha = x_dot_parameters.copy()
+    cdef I, J, _ = alpha.shape
+
+    for s in range(S) :
+        alpha[0, 0, s] = 0
+
+    for s in range(S):
+        for i in range(I):
+            alpha[i, 0, s] = x_dot_parameters[i, 0, s]
+
+    cdef insertion = 0
+    cdef deletion = 1
+    for s in range(S):    
+        for i in range(1, I):
+            transition_potential = (alpha[i - 1, 0, s] +
+                                    x_dot_parameters[i, 0, insertion + s])
+            alpha[i, 0, s] = logaddexp(alpha[i, 0, s],
+                                       transition_potential)
+        for j in range(1, J):
+            transition_potential = (alpha[0, j - 1, s] +
+                                    x_dot_parameters[0, j, deletion + s])
+            alpha[o, j, s] = logaddexp(alpha[0, j, s],
+                                       transition_potential)
+
+            
+    
+    for i in range(1, I):
+        for j in range(1, J+1):
+            for s in range(S):
+                if i == 0 and j == 0 :
+                    source_node_potential = x_dot_parameters[i,j,s]
+                else :
+                    source_node_potential = (alpha[i,j,s]
+                                             + x_dot_parameters[i,j,s])
+
+
+        i1, j1, s1 = lattice[r, 3], lattice[r, 4], lattice[r, 5]
+        edge_parameter_index = lattice[r, 6]
+
+        edge_potential = (x_dot_parameters[i1, j1, edge_parameter_index]
+                          + source_node_potential)
+
+        alpha[i1, j1, s1] = logaddexp(alpha[i1, j1, s1], edge_potential)
+
+                    
+
 cpdef np.float64_t[:, :, ::1] forward_predict(np.int64_t[:, ::1] lattice,
                                       np.float64_t[:, :, ::1] x_dot_parameters,
                                       long S) :
@@ -93,7 +141,7 @@ cpdef np.float64_t[:, :, ::1] forward_predict(np.int64_t[:, ::1] lattice,
         if s0 != old_s0 :
             if i0 == 0 and j0 == 0:
                 source_node_potential = x_dot_parameters[i0, j0, s0]
-            else:
+            else:l.
                 
                 source_node_potential = (alpha[i0,j0,s0]
                                          + x_dot_parameters[i0,j0,s0])

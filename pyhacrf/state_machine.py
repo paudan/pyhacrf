@@ -87,6 +87,11 @@ class GeneralStateMachine(object):
         return np.array(lattice, dtype='int64')
 
 
+class AdjacentStateMachine(object):
+    def __init__(self, classes) :
+        self.n_states = len(classes)
+    
+
 class DefaultStateMachine(object):
     """ State machine which, together with two input sequences, is used to build the lattice.
 
@@ -102,9 +107,9 @@ class DefaultStateMachine(object):
 
     def __init__(self, classes):
         n_classes = len(classes)
-        deltas = ((1, 1),  # Match
-                  (0, 1),  # Insertion
-                  (1, 0))  # Deletion
+        deltas = ((0, 1),  # Insertion
+                  (1, 0),  # Deletion
+                  (1, 1))  # Match
         self._start_states = [i for i in range(n_classes)]
         self._transitions = [(i, i, delta)
                              for delta in deltas
@@ -191,6 +196,7 @@ class DefaultStateMachine(object):
         return lattice_limits
 
 
+    
 
 def _grow_independent_lattice(transitions, n_states, shape, unvisited_nodes):
     I, J = shape
