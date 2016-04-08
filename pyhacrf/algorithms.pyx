@@ -29,7 +29,8 @@ cpdef dict forward(np.ndarray[np.int64_t, ndim=2] lattice, np.ndarray[np.float64
         edge = (lattice[r, 0], lattice[r, 1], lattice[r, 2],
                 lattice[r, 3], lattice[r, 4], lattice[r, 5],
                 lattice[r, 6])
-        i0, j0, s0 = current_state = lattice[r, 0], lattice[r, 1], lattice[r, 2]
+        i0, j0, s0 = lattice[r, 0], lattice[r, 1], lattice[r, 2]
+        current_state = (i0, j0, s0)
         next_state = lattice[r, 3], lattice[r, 4], lattice[r, 5]
         edge_parameter_index = edge[6]
         
