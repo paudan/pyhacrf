@@ -7,7 +7,7 @@ import numpy as np
 from numpy import random
 from pyhacrf import Hacrf
 from pyhacrf.state_machine import GeneralStateMachine, DefaultStateMachine
-from pyhacrf.pyhacrf import _Model
+from pyhacrf.pyhacrf import _SparseModel as _Model
 from pyhacrf import StringPairFeatureExtractor
 
 TEST_PRECISION = 3

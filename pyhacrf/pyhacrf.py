@@ -8,6 +8,7 @@ import lbfgs
 from .algorithms import forward, backward
 from .algorithms import forward_predict, forward_max_predict
 from .algorithms import gradient, gradient_sparse, populate_sparse_features, sparse_multiply
+import adjacent
 from .state_machine import DefaultStateMachine
 
 
@@ -91,7 +92,7 @@ class Hacrf(object):
         self.parameters = self._initialize_parameters(self._state_machine, X[0].shape[2])
 
         # Create a new model object for each training example
-        models = [_Model(self._state_machine, x, ty) for x, ty in zip(X, y)]
+        models = [_SparseModel(self._state_machine, x, ty) for x, ty in zip(X, y)]
 
         self._evaluation_count = 0
 
@@ -159,7 +160,7 @@ class Hacrf(object):
         
         parameters = np.ascontiguousarray(self.parameters.T)
 
-        predictions = [_Model(self._state_machine, x).predict(parameters, self.viterbi)
+        predictions = [_SparseModel(self._state_machine, x).predict(parameters, self.viterbi)
                        for x in X]
         predictions = np.array([[probability
                                  for _, probability
@@ -286,7 +287,7 @@ class _DenseModel(object):
         return backward(self._lattice, x_dot_parameters, I, J,
                         self.state_machine.n_states)
 
-class _AdjacentModel(object):
+class _AdjacentModel(_DenseModel):
     def __init__(self, state_machine, x, y=None):
         self.states_to_classes = {i: c for i, c in enumerate(classes)}
         self.x = x
@@ -332,19 +333,19 @@ class _AdjacentModel(object):
                 in class_Z.items()}        
 
     def _forward(self, x_dot_parameters) :
-        return forward_adjacent(x_dot_parameters,
+        return adjacent.forward(x_dot_parameters,
                                 self.state_machine.n_states)
 
     def _backward(self, x_dot_parameters) :
-        return backward_adjacent(x_dot_parameters,
-                                self.state_machine.n_states)
+        rotated_parameters = numpy.rot90(x_dot_parameters, k=2)
+        unrotated_beta = adjacent.forward(rotated_parameters,
+                                          self.state_machine.n_states)
+        return numpy.rot90(rotated_parameters, k=2)
 
 
+class _SparseModel(_DenseModel):
+    """ The actual model that implements the inference routines. """
     
-
-
-class _SparseModel(DenseModel):
-        """ The actual model that implements the inference routines. """
     def __init__(self, state_machine, x, y=None):
         self.state_machine = state_machine
         self.states_to_classes = state_machine.states_to_classes
