@@ -7,7 +7,7 @@ import numpy as np
 from numpy import random
 from pyhacrf import Hacrf
 from pyhacrf.state_machine import GeneralStateMachine, DefaultStateMachine
-from pyhacrf.pyhacrf import _SparseModel as _Model
+from pyhacrf.pyhacrf import _Model
 from pyhacrf import StringPairFeatureExtractor
 
 TEST_PRECISION = 3
@@ -255,7 +255,7 @@ class TestModel(unittest.TestCase):
                        [2, 1]],
                       [[0, 1],
                        [1, 0],
-                       [1, 0]]])
+                       [1, 0]]], dtype=np.float64)
         y = 'a'
         # Expected lattice:
         #               #     ________
@@ -304,7 +304,7 @@ class TestModel(unittest.TestCase):
         x = np.array([[[0, 1],
                        [2, 1]],
                       [[0, 1],
-                       [1, 0]]])
+                       [1, 0]]], dtype=np.float64)
         y = 'a'
         expected_alpha = {
             (0, 0, 0): np.exp(-7),
@@ -338,7 +338,14 @@ class TestModel(unittest.TestCase):
 
         self.assertEqual(len(actual_alpha), len(expected_alpha))
         for key in sorted(expected_alpha.keys()):
-            print(key, expected_alpha[key], actual_alpha[key])
+            try:
+                expected_alpha[key], actual_alpha[key]
+            except:
+                print(key)
+                print('expected', sorted(expected_alpha))
+                print('actual', sorted(actual_alpha))
+                raise
+
             self.assertAlmostEqual(actual_alpha[key], expected_alpha[key])
 
     def test_backward_connected(self):
@@ -350,7 +357,7 @@ class TestModel(unittest.TestCase):
         x = np.array([[[0, 1],
                        [2, 1]],
                       [[0, 1],
-                       [1, 0]]])
+                       [1, 0]]], dtype=np.float64)
         y = 'a'
         expected_beta = {
             (0, 0, 0): (np.exp(-4) + np.exp(-12)),  # * np.exp(-2),
@@ -391,7 +398,7 @@ class TestModel(unittest.TestCase):
         x = np.array([[[0, 1],
                        [2, 1]],
                       [[0, 1],
-                       [1, 0]]])
+                       [1, 0]]], dtype=np.float64)
         y = 'a'
         state_machine = DefaultStateMachine(classes)
         test_model = _Model(state_machine, x, y)
