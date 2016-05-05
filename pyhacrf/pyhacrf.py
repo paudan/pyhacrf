@@ -8,67 +8,86 @@ import lbfgs
 from .algorithms import forward, backward
 from .algorithms import forward_predict, forward_max_predict
 from .algorithms import gradient, gradient_sparse, populate_sparse_features, sparse_multiply
-from .state_machine import DefaultStateMachine
+import adjacent
+from .state_machine import DefaultStateMachine, AdjacentStateMachine
 
 
 class Hacrf(object):
-    """ Hidden Alignment Conditional Random Field with L2 regularizer.
+    """Hidden Alignment Conditional Random Field with L2 regularizer.
 
     Parameters
     ----------
-    l2_regularization : float, optional (default=0.0)
-        The regularization parameter.
+
+    l2_regularization : float, optional (default=0.0) 
+
+                        The regularization parameter.
 
     optimizer : function, optional (default=None)
-        The optimizing function that should be used minimize the negative log posterior.
-        The function should have the signature:
-            min_objective, argmin_objective, ... = fmin(obj, x0, **optimizer_kwargs),
-        where obj is a function that returns
-        the objective function and its gradient given a parameter vector; and x0 is the initial parameter vector.
+                The optimizing function that should be used minimize 
+                the negative log posterior.
+
+                The function should have the signature: 
+
+                min_objective, argmin_objective, ... = fmin(obj, x0, **optimizer_kwargs), 
+
+                where obj is a function that
+                returns the objective function and its gradient given
+                a parameter vector; and x0 is the initial parameter
+                vector.
 
     optimizer_kwargs : dictionary, optional (default=None)
-        The keyword arguments to pass to the optimizing function. Only used when `optimizer` is also specified.
 
-    state_machine : Instance of `GeneralStateMachine` or `DefaultStateMachine`, optional (default=`DefaultStateMachine`)
-        The state machine to use to generate the lattice.
+                       The keyword arguments to pass to the optimizing
+                       function. Only used when `optimizer` is also
+                       specified.
 
-    viterbi : Boolean, optional (default=False).
-        Whether to use Viterbi (max-sum) decoding for predictions (not training)
-        instead of the default sum-product algorithm.
+    state_machine : Instance of `GeneralStateMachine` or
+                    `DefaultStateMachine`, optional
+                    (default=`DefaultStateMachine`)
+        
+                    The state machine to use to generate the lattice.
+
 
     References
     ----------
-    See *A Conditional Random Field for Discriminatively-trained Finite-state String Edit Distance*
-    by McCallum, Bellare, and Pereira, and the report *Conditional Random Fields for Noisy text normalisation*
-    by Dirko Coetsee.
+    See *A Conditional Random Field for Discriminatively-trained
+    Finite-state String Edit Distance* by McCallum, Bellare, and
+    Pereira, and the report *Conditional Random Fields for Noisy text
+    normalisation* by Dirko Coetsee.
     """
 
     def __init__(self,
                  l2_regularization=0.0,
                  optimizer=None,
                  optimizer_kwargs=None,
-                 state_machine=None,
-                 viterbi=False):
+                 state_machine=None):
         self.parameters = None
         self.classes = None
         self.l2_regularization = l2_regularization
         self._optimizer = optimizer
         self._optimizer_kwargs = optimizer_kwargs
-        self.viterbi = viterbi
 
         self._optimizer_result = None
         self._state_machine = state_machine
         self._states_to_classes = None
         self._evaluation_count = None
 
+        if isinstance(state_machine, AdjacentStateMachine):
+            self._Model = _AdjacentModel
+        else:
+            self._Model = _SparseModel
+
     def fit(self, X, y, verbosity=0):
-        """Fit the model according to the given training data.
+        """
+        Fit the model according to the given training data.
 
         Parameters
         ----------
-        X : List of ndarrays, one for each training example.
-            Each training example's shape is (string1_len, string2_len, n_features), where
-            string1_len and string2_len are the length of the two training strings and n_features the
+
+        X : List of ndarrays, one for each training example.  Each
+            training example's shape is (string1_len, string2_len,
+            n_features), where string1_len and string2_len are the
+            length of the two training strings and n_features the
             number of features.
 
         y : array-like, shape (n_samples,)
@@ -78,20 +97,26 @@ class Hacrf(object):
         -------
         self : object
             Returns self.
+
         """
         self.classes = list(set(y))
         n_points = len(y)
         if len(X) != n_points:
-            raise Exception('Number of training points should be the same as training labels.')
+            raise Exception(
+                'Number of training points should be the same as '
+                'training labels.')
 
         if not self._state_machine:
             self._state_machine = DefaultStateMachine(self.classes)
 
-        # Initialize the parameters given the state machine, features, and target classes.
-        self.parameters = self._initialize_parameters(self._state_machine, X[0].shape[2])
+        # Initialize the parameters given the state machine, features,
+        # and target classes.
+        self.parameters = self._initialize_parameters(self._state_machine,
+                                                      X[0].shape[2])
 
         # Create a new model object for each training example
-        models = [_Model(self._state_machine, x, ty) for x, ty in zip(X, y)]
+        models = [self._Model(self._state_machine, x, ty)
+                  for x, ty in zip(X, y)]
 
         self._evaluation_count = 0
 
@@ -116,8 +141,9 @@ class Hacrf(object):
                     print('{:10} {:10.4} {:10.4}'.format(self._evaluation_count, ll, (abs(gradient).sum())))
             self._evaluation_count += 1
 
-            # TODO: Allow some of the parameters to be frozen. ie. not trained. Can later also completely remove
-            # TODO:     the computation associated with these parameters.
+            # TODO: Allow some of the parameters to be frozen. ie. not
+            # trained. Can later also completely remove
+            # TODO: the computation associated with these parameters.
             return -ll, -gradient
 
         def _objective_copy_gradient(paramers, g):
@@ -126,7 +152,9 @@ class Hacrf(object):
             return nll
 
         if self._optimizer:
-            self.optimizer_result = self._optimizer(_objective, self.parameters.flatten(), **self._optimizer_kwargs)
+            self.optimizer_result = self._optimizer(_objective,
+                                                    self.parameters.flatten(),
+                                                    **self._optimizer_kwargs)
             self.parameters = self.optimizer_result[0].reshape(self.parameters.shape)
         else:
             optimizer = lbfgs.LBFGS()
@@ -159,7 +187,7 @@ class Hacrf(object):
         
         parameters = np.ascontiguousarray(self.parameters.T)
 
-        predictions = [_Model(self._state_machine, x).predict(parameters, self.viterbi)
+        predictions = [_SparseModel(self._state_machine, x).predict(parameters)
                        for x in X]
         predictions = np.array([[probability
                                  for _, probability
@@ -226,59 +254,42 @@ class Hacrf(object):
         return self
 
 
-class _Model(object):
+class _DenseModel(object):
     """ The actual model that implements the inference routines. """
     def __init__(self, state_machine, x, y=None):
         self.state_machine = state_machine
         self.states_to_classes = state_machine.states_to_classes
         self.x = x
-        self.sparse_x = 'uninitialized'
         self.y = y
         self._lattice = self.state_machine.build_lattice(self.x)
 
     def forward_backward(self, parameters):
         """ Run the forward backward algorithm with the given parameters. """
-        # If the features are sparse, we can use an optimization.
-        # I'm not using scipy.sparse here because we want to avoid a scipy dependency and also scipy.sparse doesn't seem
-        # to handle arrays of shape higher than 2.
-        if isinstance(self.sparse_x, str) and self.sparse_x == 'uninitialized':
-            if (self.x == 0).sum() * 1.0 / self.x.size > 0.6:
-                self.sparse_x = self._construct_sparse_features(self.x)
-            else:
-                self.sparse_x = 'not sparse'
 
         I, J, K = self.x.shape
-        if not isinstance(self.sparse_x, str):
-            C = self.sparse_x[0].shape[2]
-            S, _ = parameters.shape
-            x_dot_parameters = np.zeros((I, J, S))
-            sparse_multiply(x_dot_parameters, self.sparse_x[0], self.sparse_x[1], parameters.T, I, J, K, C, S)
-        else:
-            x_dot_parameters = np.dot(self.x, parameters.T)  # Pre-compute the dot product
+        x_dot_parameters = np.dot(self.x,
+                                  parameters.T)  
+
         alpha = self._forward(x_dot_parameters)
         beta = self._backward(x_dot_parameters)
-        classes_to_ints = {k: i for i, k in enumerate(set(self.states_to_classes.values()))}
+        classes_to_ints = {k: i
+                           for i, k
+                           in enumerate(set(self.states_to_classes.values()))}
         states_to_classes = np.array([classes_to_ints[self.states_to_classes[state]]
-                                      for state in range(max(self.states_to_classes.keys()) + 1)], dtype='int64')
-        if not isinstance(self.sparse_x, str):
-            ll, deriv = gradient_sparse(alpha, beta, parameters, states_to_classes,
-                                        self.sparse_x[0], self.sparse_x[1], classes_to_ints[self.y],
-                                        I, J, self.sparse_x[0].shape[2])
-        else:
-            ll, deriv = gradient(alpha, beta, parameters, states_to_classes,
-                                 self.x, classes_to_ints[self.y], I, J, K)
+                                      for state
+                                      in range(max(self.states_to_classes.keys()) + 1)],
+                                     dtype='int64')
+
+        ll, deriv = gradient(alpha, beta, parameters, states_to_classes,
+                             self.x, classes_to_ints[self.y], I, J, K)
         return ll, deriv
 
-    def predict(self, parameters, viterbi):
+    def predict(self, parameters):
         """ Run forward algorithm to find the predicted distribution over classes. """
         x_dot_parameters = np.einsum('ijk,kl->ijl', self.x, parameters)
 
-        if not viterbi:
-            alpha = forward_predict(self._lattice, x_dot_parameters,
-                                    self.state_machine.n_states)
-        else:
-            alpha = forward_max_predict(self._lattice, x_dot_parameters,
-                                        self.state_machine.n_states)
+        alpha = forward_predict(self._lattice, x_dot_parameters,
+                                self.state_machine.n_states)
 
         I, J, _ = self.x.shape
 
@@ -302,6 +313,104 @@ class _Model(object):
         I, J, _ = self.x.shape
         return backward(self._lattice, x_dot_parameters, I, J,
                         self.state_machine.n_states)
+
+class _AdjacentModel(_DenseModel):
+    def __init__(self, state_machine, x, y=None):
+        self.states_to_classes = {i: c for i, c in enumerate(state_machine.classes)}
+        self.state_machine = state_machine
+        self.x = x
+        self.y = y
+
+    def forward_backward(self, parameters):
+        """ Run the forward backward algorithm with the given parameters. """
+
+        I, J, K = self.x.shape
+        x_dot_parameters = np.einsum('ijk,kl->ijl', self.x, parameters)
+
+        alpha = self._forward(x_dot_parameters)
+        beta = self._backward(x_dot_parameters)
+        states_to_classes = np.array(sorted(self.states_to_classes.keys))
+
+        ll, deriv = gradient(alpha,
+                             beta,
+                             parameters,
+                             states_to_classes,
+                             self.x,
+                             classes_to_ints[self.y], I, J, K)
+        return ll, deriv
+
+    def predict(self, parameters):
+        """ Run forward algorithm to find the predicted distribution over classes. """
+        x_dot_parameters = np.einsum('ijk,kl->ijl', self.x, parameters)
+
+        alpha = adjecent.forward_predict(x_dot_parameters,
+                                         self.state_machine.n_states)
+
+        I, J, _ = self.x.shape
+
+        class_Z = {}
+        Z = -np.inf
+
+        for state, predicted_class in self.states_to_classes.items():
+            weight = alpha[I - 1, J - 1, state]
+            class_Z[predicted_class] = weight
+            Z = np.logaddexp(Z, weight)
+
+        return {label: np.exp(class_z - Z)
+                for label, class_z
+                in class_Z.items()}        
+
+    def _forward(self, x_dot_parameters) :
+        return adjacent.forward(x_dot_parameters,
+                                self.state_machine.n_states)
+
+    def _backward(self, x_dot_parameters) :
+        return adjacent.backward(x_dot_parameters,
+                                 self.state_machine.n_states)
+
+
+class _SparseModel(_DenseModel):
+    """ The actual model that implements the inference routines. """
+    
+    def __init__(self, state_machine, x, y=None):
+        self.state_machine = state_machine
+        self.states_to_classes = state_machine.states_to_classes
+        self.x = x
+        self.sparse_x = self._construct_sparse_features(self.x)
+        self.y = y
+        self._lattice = self.state_machine.build_lattice(self.x)
+
+    def forward_backward(self, parameters):
+        """ Run the forward backward algorithm with the given parameters. """
+        I, J, K = self.x.shape
+        C = self.sparse_x[0].shape[2]
+        S, _ = parameters.shape
+        x_dot_parameters = np.zeros((I, J, S))
+        sparse_multiply(x_dot_parameters,
+                        self.sparse_x[0],
+                        self.sparse_x[1],
+                        parameters.T,
+                        I, J, K, C, S)
+
+        alpha = self._forward(x_dot_parameters)
+        beta = self._backward(x_dot_parameters)
+        classes_to_ints = {k: i
+                           for i, k
+                           in enumerate(set(self.states_to_classes.values()))}
+        states_to_classes = np.array([classes_to_ints[self.states_to_classes[state]]
+                                      for state
+                                      in range(max(self.states_to_classes.keys()) + 1)],
+                                     dtype='int64')
+        ll, deriv = gradient_sparse(alpha, beta,
+                                    parameters,
+                                    states_to_classes,
+                                    self.sparse_x[0],
+                                    self.sparse_x[1],
+                                    classes_to_ints[self.y],
+                                    I, J,
+                                    self.sparse_x[0].shape[2])
+        return ll, deriv
+
 
     def _construct_sparse_features(self, x):
         """ Helper to construct a sparse representation of the features. """

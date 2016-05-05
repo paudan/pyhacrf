@@ -6,8 +6,8 @@ from numpy.testing import assert_array_almost_equal, assert_array_equal
 import numpy as np
 from numpy import random
 from pyhacrf import Hacrf
-from pyhacrf.state_machine import GeneralStateMachine, DefaultStateMachine
-from pyhacrf.pyhacrf import _Model
+from pyhacrf.state_machine import GeneralStateMachine, DefaultStateMachine, AdjacentStateMachine
+from pyhacrf.pyhacrf import _SparseModel, _AdjacentModel
 from pyhacrf import StringPairFeatureExtractor
 
 TEST_PRECISION = 3
@@ -135,49 +135,6 @@ class TestHacrf(unittest.TestCase):
         assert_array_almost_equal(actual_predictions, expected_predictions, 
                                   decimal=TEST_PRECISION)
 
-    def test_fit_predict_regularized_viterbi(self):
-        incorrect = ['helloooo', 'freshh', 'ffb', 'h0me', 'wonderin', 'relaionship', 'hubby', 'krazii', 'mite', 'tropic']
-        correct = ['hello', 'fresh', 'facebook', 'home', 'wondering', 'relationship', 'husband', 'crazy', 'might', 'topic']
-        training = zip(incorrect, correct)
-
-        fe = StringPairFeatureExtractor(match=True, numeric=True)
-        xf = fe.fit_transform(training)
-
-        model = Hacrf(l2_regularization=10.0, viterbi=True)
-        model.fit(xf, [0, 0, 0, 0, 0, 1, 1, 1, 1, 1])
-        print(model.parameters)
-
-        expected_parameters = np.array([[-0.0569188, 0.07413339, 0.],
-                                        [0.00187709, -0.06377866, 0.],
-                                        [-0.01908823, 0.00586189, 0.],
-                                        [0.01721114, -0.00636556, 0.],
-                                        [0.01578279, 0.0078614, 0.],
-                                        [-0.0139057, -0.00862948, 0.],
-                                        [-0.00623241, 0.02937325, 0.],
-                                        [0.00810951, -0.01774676, 0.]])
-        assert_array_almost_equal(model.parameters, expected_parameters,
-                                  decimal=TEST_PRECISION)
-
-        expected_probas = np.array([[0.56394611, 0.43605389],
-                                    [0.52977205, 0.47022795],
-                                    [0.4751729, 0.5248271],
-                                    [0.51183761, 0.48816239],
-                                    [0.48608081, 0.51391919],
-                                    [0.4986367, 0.5013633],
-                                    [0.46947222, 0.53052778],
-                                    [0.43233544, 0.56766456],
-                                    [0.47463002, 0.52536998],
-                                    [0.51265109, 0.48734891]])
-        actual_predict_probas = model.predict_proba(xf)
-        print(actual_predict_probas)
-        assert_array_almost_equal(actual_predict_probas, expected_probas,
-                                  decimal=TEST_PRECISION)
-
-        expected_predictions = np.array([0, 0, 1, 0, 1, 1, 1, 1, 1, 0])
-        actual_predictions = model.predict(xf)
-        assert_array_almost_equal(actual_predictions, expected_predictions,
-                                  decimal=TEST_PRECISION)
-
 
 class TestModel(unittest.TestCase):
     def test_build_lattice(self):
@@ -275,7 +232,7 @@ class TestModel(unittest.TestCase):
             (1, 2, 2): np.exp(-6) * np.exp(4) * np.exp(-6) * np.exp(5) * np.exp(-3)
         }
         expected_alpha = {k: np.emath.log(v) for k, v in expected_alpha.items()}
-        test_model = _Model(state_machine, x, y)
+        test_model = _SparseModel(state_machine, x, y)
         x_dot_parameters = np.dot(x, parameters.T)  # Pre-compute the dot product
         actual_alpha = test_model._forward(x_dot_parameters)
 
@@ -330,7 +287,7 @@ class TestModel(unittest.TestCase):
 
         state_machine = DefaultStateMachine(classes)
         print
-        test_model = _Model(state_machine, x, y)
+        test_model = _SparseModel(state_machine, x, y)
         for s in test_model._lattice:
             print(s)
         x_dot_parameters = np.dot(x, parameters.T)  # Pre-compute the dot product
@@ -347,7 +304,7 @@ class TestModel(unittest.TestCase):
                 raise
 
             self.assertAlmostEqual(actual_alpha[key], expected_alpha[key])
-
+ 
     def test_backward_connected(self):
         parameters = np.array(range(-3, 3), dtype='float64').reshape((3, 2))
         # parameters =
@@ -379,12 +336,11 @@ class TestModel(unittest.TestCase):
 
         state_machine = GeneralStateMachine(start_states, transitions, states_to_classes)
 
-        test_model = _Model(state_machine, x, y)
+        test_model = _SparseModel(state_machine, x, y)
         for s in test_model._lattice:
             print(s)
         x_dot_parameters = np.dot(x, parameters.T)  # Pre-compute the dot product
         actual_beta = test_model._backward(x_dot_parameters)
-        print(actual_beta)
 
         print
         self.assertEqual(len(actual_beta), len(expected_beta))
@@ -401,7 +357,7 @@ class TestModel(unittest.TestCase):
                        [1, 0]]], dtype=np.float64)
         y = 'a'
         state_machine = DefaultStateMachine(classes)
-        test_model = _Model(state_machine, x, y)
+        test_model = _SparseModel(state_machine, x, y)
         x_dot_parameters = np.dot(x, parameters.T)  # Pre-compute the dot product
         actual_alpha = test_model._forward(x_dot_parameters)
         actual_beta = test_model._backward(x_dot_parameters)
@@ -427,7 +383,7 @@ class TestModel(unittest.TestCase):
                        [1, 2]]], dtype='float64')
         y = 'a'
         state_machine = DefaultStateMachine(classes)
-        test_model = _Model(state_machine, x, y)
+        test_model = _SparseModel(state_machine, x, y)
         print(test_model._lattice)
         #
         # 0   01 --- 01
@@ -474,7 +430,7 @@ class TestModel(unittest.TestCase):
                        [1, 0.0]]])
         y = 'a'
         state_machine = DefaultStateMachine(classes)
-        test_model = _Model(state_machine, x, y)
+        test_model = _SparseModel(state_machine, x, y)
         print(test_model._lattice)
 
         expected_dll = np.zeros(parameters.shape)
@@ -505,7 +461,7 @@ class TestModel(unittest.TestCase):
         parameters = Hacrf._initialize_parameters(state_machine, x.shape[2])
         parameters = random.randn(*parameters.shape) * 10 - 2
 
-        test_model = _Model(state_machine, x, y)
+        test_model = _SparseModel(state_machine, x, y)
         print(test_model._lattice)
 
         expected_dll = np.zeros(parameters.shape)
@@ -528,6 +484,102 @@ class TestModel(unittest.TestCase):
         print(actual_dll)
         self.assertEqual((np.isnan(actual_dll)).any(), False)
         assert_array_almost_equal(actual_dll, expected_dll, decimal=TEST_PRECISION)
+
+class TestAdjacentModel(unittest.TestCase):
+    def test_forward_connected(self):
+        classes = ['a', 'b']
+        parameters = np.array(range(-8, 8), dtype='float64').reshape((8, 2))
+        # parameters =
+        #0([[-8, -7],
+        #1  [-6, -5],
+        #2  [-4, -3],
+        #3  [-2, -1],
+        #4  [ 0,  1],
+        #5  [ 2,  3],
+        #6  [ 4,  5],
+        #7  [ 6,  7]])
+        x = np.array([[[0, 1],
+                       [2, 1]],
+                      [[0, 1],
+                       [1, 0]]], dtype=np.float64)
+        y = 'a'
+        expected_alpha = {
+            (0, 0, 0): np.exp(-7),
+            (0, 0, 0, 0, 1, 0, 4): np.exp(-7) * np.exp(1),
+            (0, 0, 0, 1, 0, 0, 6): np.exp(-7) * np.exp(5),
+            (0, 0, 0, 1, 1, 0, 2): np.exp(-7) * np.exp(-4),
+            (0, 0, 1): np.exp(-5),
+            (0, 0, 1, 0, 1, 1, 5): np.exp(-5) * np.exp(7),
+            (0, 0, 1, 1, 0, 1, 7): np.exp(-5) * np.exp(7),
+            (0, 0, 1, 1, 1, 1, 3): np.exp(-5) * np.exp(-2),
+            (0, 1, 0): np.exp(-7) * np.exp(1) * np.exp(-23),
+            (0, 1, 0, 1, 1, 0, 6): np.exp(-7) * np.exp(1) * np.exp(-23) * np.exp(4),
+            (0, 1, 1): np.exp(-5) * np.exp(7) * np.exp(-17),
+            (0, 1, 1, 1, 1, 1, 7): np.exp(-5) * np.exp(7) * np.exp(-17) * np.exp(6),
+            (1, 0, 0): np.exp(-7) * np.exp(5) * np.exp(-7),
+            (1, 0, 0, 1, 1, 0, 4): np.exp(-7) * np.exp(5) * np.exp(-7) * np.exp(0),
+            (1, 0, 1): np.exp(-5) * np.exp(7) * np.exp(-5),
+            (1, 0, 1, 1, 1, 1, 5): np.exp(-5) * np.exp(7) * np.exp(-5) * np.exp(2),
+            (1, 1, 0): (np.exp(-11) + np.exp(-25) + np.exp(-9)) * np.exp(-8),
+            (1, 1, 1): (np.exp(-1) + np.exp(-9) + np.exp(-7)) * np.exp(-6)
+        }
+        expected_alpha = {k: np.emath.log(v) for k, v in expected_alpha.items()}
+
+        state_machine = AdjacentStateMachine(classes)
+        test_model = _AdjacentModel(state_machine, x, y)
+        x_dot_parameters = np.dot(x, parameters.T)  # Pre-compute the dot product
+        actual_alpha = test_model._forward(x_dot_parameters)
+
+        self.assertEqual(len(actual_alpha), len(expected_alpha))
+        for key in sorted(expected_alpha.keys()):
+            try:
+                expected_alpha[key], actual_alpha[key]
+            except:
+                print(key)
+                print('expected', sorted(expected_alpha))
+                print('actual', sorted(actual_alpha))
+                raise
+
+            self.assertAlmostEqual(actual_alpha[key], expected_alpha[key])
+
+    def test_backward_connected(self):
+        parameters = np.array(range(-3, 3), dtype='float64').reshape((3, 2))
+        # parameters =
+        #0 ([[-3, -2],
+        #1   [-1,  0],
+        #2   [ 1,  2]])
+        x = np.array([[[0, 1],
+                       [2, 1]],
+                      [[0, 1],
+                       [1, 0]]], dtype=np.float64)
+        y = 'a'
+        expected_beta = {
+            (0, 0, 0): -3.905077043579039,
+            (0, 0, 0, 0, 1, 0, 2): -11.0,
+            (0, 0, 0, 1, 0, 0, 3): -4.0,
+            (0, 0, 0, 1, 1, 0, 1): -3.0,
+            (0, 1, 0): -3.0,
+            (0, 1, 0, 1, 1, 0, 3): -3.0,
+            (1, 0, 0): -2.0,
+            (1, 0, 0, 1, 1, 0, 2): -3.0,
+            (1, 1, 0): 0.0}
+
+
+        state_machine = AdjacentStateMachine(['a'])
+        test_model = _AdjacentModel(state_machine, x, y)
+
+        x_dot_parameters = np.dot(x, parameters.T)  # Pre-compute the dot product
+        actual_beta = test_model._backward(x_dot_parameters)
+        print(sorted(actual_beta.items()))
+        print(sorted(expected_beta.items()))
+
+        print
+        self.assertEqual(len(actual_beta), len(expected_beta))
+        for key in sorted(expected_beta.keys(), reverse=True):
+            print(key, expected_beta[key], actual_beta[key])
+            self.assertAlmostEqual(actual_beta[key], expected_beta[key])
+            
+    
 
 if __name__ == '__main__':
     unittest.main()

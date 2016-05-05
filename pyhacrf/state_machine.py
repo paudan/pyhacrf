@@ -90,6 +90,7 @@ class GeneralStateMachine(object):
 class AdjacentStateMachine(object):
     def __init__(self, classes) :
         self.n_states = len(classes)
+        self.classes = classes
     
 
 class DefaultStateMachine(object):
@@ -107,9 +108,9 @@ class DefaultStateMachine(object):
 
     def __init__(self, classes):
         n_classes = len(classes)
-        deltas = ((0, 1),  # Insertion
-                  (1, 0),  # Deletion
-                  (1, 1))  # Match
+        deltas = ((1, 1),  # Match
+                  (0, 1),  # Insertion
+                  (1, 0))  # Deletion
         self._start_states = [i for i in range(n_classes)]
         self._transitions = [(i, i, delta)
                              for delta in deltas

@@ -6,10 +6,11 @@ cimport numpy as np
 from numpy import ndarray
 from numpy cimport ndarray
 from numpy.math cimport INFINITY as inf
-cdef extern from "fastlogexp.h" nogil :
-    np.float64_t log "fastlog" (np.float64_t x)
-    np.float64_t exp "fastexp" (np.float64_t x)
-
+#cdef extern from "fastlogexp.h" nogil :
+#    np.float64_t log "fastlog" (np.float64_t x)
+#    np.float64_t exp "fastexp" (np.float64_t x)
+log = np.log
+exp = np.exp
 
 cpdef dict forward(np.ndarray[np.float64_t, ndim=3] x_dot_parameters, int S):
     """ Helper to calculate the forward weights.  """
@@ -25,9 +26,9 @@ cpdef dict forward(np.ndarray[np.float64_t, ndim=3] x_dot_parameters, int S):
     # 1 x - - -
     # 2 x - - -
     # 3 x - - -
-    cdef int insertion = 0
-    cdef int deletion = 1
-    cdef int matching = 2
+    cdef int matching =  1 * S
+    cdef int deletion =  2 * S
+    cdef int insertion = 3 * S
     cdef np.float64_t insert, delete, match
     cdef int i, j, s 
 
@@ -59,10 +60,76 @@ cpdef dict forward(np.ndarray[np.float64_t, ndim=3] x_dot_parameters, int S):
                                   logaddexp(insert, logaddexp(delete, match)))
 
                 alpha[i - 1, j, s, i, j, s, insertion + s] = insert
-                alpha[i, j - 1, s, i, j, s, insertion + s] = delete
-                alpha[i - 1, j - 1, s, i, j, s, insertion + s] = match
+                alpha[i, j - 1, s, i, j, s, deletion + s] = delete
+                alpha[i - 1, j - 1, s, i, j, s, matching + s] = match
 
     return alpha
+
+cpdef dict backward(np.ndarray[np.float64_t, ndim=3] x_dot_parameters, int S):
+    """ Helper to calculate the forward weights.  """
+    cdef dict beta = {}
+
+    cdef int I, J
+    I, J = x_dot_parameters.shape[0], x_dot_parameters.shape[1]
+
+    # Fill in the edges of the state matrices
+    #
+    #   0 1 2 3 
+    # 0 - - - x
+    # 1 - - - x
+    # 2 - - - x
+    # 3 x x x x
+    cdef int matching =  1 * S
+    cdef int deletion =  2 * S
+    cdef int insertion = 3 * S
+    cdef np.float64_t insert, delete, match
+    cdef int i, j, s
+    cdef int last_row = I - 1
+    cdef int last_col = J - 1
+
+    for s in range(S):
+        beta[last_row, last_col, s] = 0
+        for i in range(last_row - 1, -1, -1):
+            insert = (beta[i + 1, last_col, s] +
+                      x_dot_parameters[i + 1, last_col, s])
+            beta[i, last_col, s] = (x_dot_parameters[i + 1, last_col, insertion + s]
+                                    + insert)
+
+            beta[i, last_col, s, i + 1, last_col, s, insertion + s] = insert
+        for j in range(last_col - 1, -1, -1):
+            delete = (beta[last_row, j + 1, s] +
+                      x_dot_parameters[last_row, j + 1, s])
+            beta[last_row, j, s] = (x_dot_parameters[last_row, j + 1, deletion + s]
+                                    + delete)
+
+            beta[last_row, j, s, last_row, j + 1, s, deletion + s] = delete
+        
+        # Now fill in the middle of the matrix    
+        for i in range(last_row - 1, -1, -1):
+            for j in range(last_col - 1, -1, -1):
+                insert = (beta[i + 1, j, s] +
+                          x_dot_parameters[i + 1, j, s])
+                delete = (beta[i, j + 1, s] +
+                          x_dot_parameters[i, j + 1, s])
+                match = (beta[i + 1, j + 1, s] +
+                         x_dot_parameters[i + 1, j + 1, s])
+
+                beta[i, j, s, i + 1, j, s, insertion + s] = insert
+                beta[i, j, s, i, j + 1, s, deletion + s] = delete
+                beta[i, j, s, i + 1, j + 1, s, matching + s] = match
+
+                insert += x_dot_parameters[i + 1, j, insertion + s]
+                delete += x_dot_parameters[i, j + 1, deletion + s]
+                match += x_dot_parameters[i + 1, j + 1, matching + s]
+                
+                beta[i, j, s] = (x_dot_parameters[i, j, s] +
+                                 logaddexp(insert, logaddexp(delete, match)))
+
+        beta[0, 0, s] -=  x_dot_parameters[0, 0, s]
+
+
+    return beta
+
 
 
 cpdef np.float64_t[:, :, ::1] forward_predict(np.float64_t[:, :, ::1] x_dot_parameters,
@@ -79,9 +146,9 @@ cpdef np.float64_t[:, :, ::1] forward_predict(np.float64_t[:, :, ::1] x_dot_para
     # 1 x - - -
     # 2 x - - -
     # 3 x - - -
-    cdef int insertion = 0
-    cdef int deletion = 1
-    cdef int matching = 2
+    cdef int matching =  1 * S
+    cdef int deletion =  2 * S
+    cdef int insertion = 3 * S
     cdef np.float64_t insert, delete, match
     cdef int i, j, s
     
@@ -110,7 +177,7 @@ cpdef np.float64_t[:, :, ::1] forward_predict(np.float64_t[:, :, ::1] x_dot_para
 
     return alpha
 
-cdef np.float64_t logaddexp(np.float64_t x, np.float64_t y) nogil :
+cdef np.float64_t logaddexp(np.float64_t x, np.float64_t y) :
     cdef np.float64_t tmp
     if x == y :
         return x + log(2)
