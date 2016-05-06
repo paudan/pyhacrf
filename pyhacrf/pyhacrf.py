@@ -92,7 +92,7 @@ class Hacrf(object):
         if not self._state_machine:
             self._state_machine = DefaultStateMachine(self.classes)
 
-        # Initialize the parameters given the state machine, features and target classes.
+        # Initialize the parameters given the state machine, features, and target classes.
         self.parameters = self._initialize_parameters(self._state_machine, X[0].shape[2])
 
         # Create a new model object for each training example
