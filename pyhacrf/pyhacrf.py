@@ -8,7 +8,7 @@ import lbfgs
 from .algorithms import forward, backward
 from .algorithms import forward_predict, forward_max_predict
 from .algorithms import gradient, gradient_sparse, populate_sparse_features, sparse_multiply
-import adjacent
+import pyhacrf.adjacent as adjacent
 from .state_machine import DefaultStateMachine
 
 
