@@ -72,7 +72,8 @@ class Hacrf(object):
         self._states_to_classes = None
         self._evaluation_count = None
 
-        if isinstance(state_machine, DefaultStateMachine):
+        if (state_machine is None or
+            isinstance(state_machine, DefaultStateMachine)):
             self._Model = _AdjacentModel
         else:
             self._Model = _GeneralModel
@@ -114,6 +115,7 @@ class Hacrf(object):
         self.parameters = self._initialize_parameters(self._state_machine,
                                                       X[0].shape[2])
 
+        print(self._Model)
         # Create a new model object for each training example
         models = [self._Model(self._state_machine, x, ty)
                   for x, ty in zip(X, y)]
