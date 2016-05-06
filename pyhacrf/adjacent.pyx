@@ -9,9 +9,6 @@ from numpy.math cimport INFINITY as inf
 cdef extern from "math.h" nogil :
     np.float64_t log (np.float64_t x)
     np.float64_t exp (np.float64_t x)
-#cdef extern from "fastlogexp.h" nogil :
-#    np.float64_t log "fastlog" (np.float64_t x)
-#    np.float64_t exp "fastexp" (np.float64_t x)
 
 cpdef dict forward(np.ndarray[np.float64_t, ndim=3] x_dot_parameters, int S):
     """ Helper to calculate the forward weights.  """
@@ -125,7 +122,6 @@ cpdef dict backward(np.ndarray[np.float64_t, ndim=3] x_dot_parameters, int S):
                 
                 beta[i, j, s] = logaddexp(insert, logaddexp(delete, match))
 
-        #beta[0, 0, s] -= x_dot_parameters[0, 0, s]
 
 
     return beta
