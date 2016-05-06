@@ -3,12 +3,13 @@
 
 """ Implements a Hidden Alignment Conditional Random Field (HACRF). """
 
+from __future__ import absolute_import
 import numpy as np
 import lbfgs
 from .algorithms import forward, backward
 from .algorithms import forward_predict, forward_max_predict
 from .algorithms import gradient, gradient_sparse, populate_sparse_features, sparse_multiply
-import pyhacrf.adjacent as adjacent
+from . import adjacent
 from .state_machine import DefaultStateMachine
 
 
