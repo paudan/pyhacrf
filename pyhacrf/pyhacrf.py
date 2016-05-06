@@ -83,7 +83,7 @@ class Hacrf(object):
         -------
         self : object
             Returns self.
-        """            
+        """
         self.classes = list(set(y))
         n_points = len(y)
         if len(X) != n_points:
@@ -92,8 +92,7 @@ class Hacrf(object):
         if not self._state_machine:
             self._state_machine = DefaultStateMachine(self.classes)
 
-        # Initialize the parameters given the state machine, features,
-        # and target classes.
+        # Initialize the parameters given the state machine, features and target classes.
         self.parameters = self._initialize_parameters(self._state_machine, X[0].shape[2])
 
         # Create a new model object for each training example
@@ -123,7 +122,7 @@ class Hacrf(object):
             self._evaluation_count += 1
 
             # TODO: Allow some of the parameters to be frozen. ie. not trained. Can later also completely remove
-            # TODO: the computation associated with these parameters.
+            # TODO:     the computation associated with these parameters.
             return -ll, -gradient
 
         def _objective_copy_gradient(paramers, g):
