@@ -13,47 +13,35 @@ from .state_machine import DefaultStateMachine
 
 
 class Hacrf(object):
-    """Hidden Alignment Conditional Random Field with L2 regularizer.
+    """ Hidden Alignment Conditional Random Field with L2 regularizer.
 
     Parameters
     ----------
-
-    l2_regularization : float, optional (default=0.0) 
-
-                        The regularization parameter.
+    l2_regularization : float, optional (default=0.0)
+        The regularization parameter.
 
     optimizer : function, optional (default=None)
-                The optimizing function that should be used minimize 
-                the negative log posterior.
-
-                The function should have the signature: 
-
-                min_objective, argmin_objective, ... = fmin(obj, x0, **optimizer_kwargs), 
-
-                where obj is a function that
-                returns the objective function and its gradient given
-                a parameter vector; and x0 is the initial parameter
-                vector.
+        The optimizing function that should be used minimize the negative log posterior.
+        The function should have the signature:
+            min_objective, argmin_objective, ... = fmin(obj, x0, **optimizer_kwargs),
+        where obj is a function that returns
+        the objective function and its gradient given a parameter vector; and x0 is the initial parameter vector.
 
     optimizer_kwargs : dictionary, optional (default=None)
+        The keyword arguments to pass to the optimizing function. Only used when `optimizer` is also specified.
 
-                       The keyword arguments to pass to the optimizing
-                       function. Only used when `optimizer` is also
-                       specified.
+    state_machine : Instance of `GeneralStateMachine` or `DefaultStateMachine`, optional (default=`DefaultStateMachine`)
+        The state machine to use to generate the lattice.
 
-    state_machine : Instance of `GeneralStateMachine` or
-                    `DefaultStateMachine`, optional
-                    (default=`DefaultStateMachine`)
-        
-                    The state machine to use to generate the lattice.
-
+    viterbi : Boolean, optional (default=False).
+        Whether to use Viterbi (max-sum) decoding for predictions (not training)
+        instead of the default sum-product algorithm.
 
     References
     ----------
-    See *A Conditional Random Field for Discriminatively-trained
-    Finite-state String Edit Distance* by McCallum, Bellare, and
-    Pereira, and the report *Conditional Random Fields for Noisy text
-    normalisation* by Dirko Coetsee.
+    See *A Conditional Random Field for Discriminatively-trained Finite-state String Edit Distance*
+    by McCallum, Bellare, and Pereira, and the report *Conditional Random Fields for Noisy text normalisation*
+    by Dirko Coetsee.
     """
 
     def __init__(self,
@@ -79,16 +67,13 @@ class Hacrf(object):
             self._Model = _GeneralModel
 
     def fit(self, X, y, verbosity=0):
-        """
-        Fit the model according to the given training data.
+        """Fit the model according to the given training data.
 
         Parameters
         ----------
-
-        X : List of ndarrays, one for each training example.  Each
-            training example's shape is (string1_len, string2_len,
-            n_features), where string1_len and string2_len are the
-            length of the two training strings and n_features the
+        X : List of ndarrays, one for each training example.
+            Each training example's shape is (string1_len, string2_len, n_features), where
+            string1_len and string2_len are the length of the two training strings and n_features the
             number of features.
 
         y : array-like, shape (n_samples,)
@@ -98,27 +83,21 @@ class Hacrf(object):
         -------
         self : object
             Returns self.
-
-        """
+        """            
         self.classes = list(set(y))
         n_points = len(y)
         if len(X) != n_points:
-            raise Exception(
-                'Number of training points should be the same as '
-                'training labels.')
+            raise Exception('Number of training points should be the same as training labels.')
 
         if not self._state_machine:
             self._state_machine = DefaultStateMachine(self.classes)
 
         # Initialize the parameters given the state machine, features,
         # and target classes.
-        self.parameters = self._initialize_parameters(self._state_machine,
-                                                      X[0].shape[2])
+        self.parameters = self._initialize_parameters(self._state_machine, X[0].shape[2])
 
-        print(self._Model)
         # Create a new model object for each training example
-        models = [self._Model(self._state_machine, x, ty)
-                  for x, ty in zip(X, y)]
+        models = [self._Model(self._state_machine, x, ty) for x, ty in zip(X, y)]
 
         self._evaluation_count = 0
 
@@ -143,8 +122,7 @@ class Hacrf(object):
                     print('{:10} {:10.4} {:10.4}'.format(self._evaluation_count, ll, (abs(gradient).sum())))
             self._evaluation_count += 1
 
-            # TODO: Allow some of the parameters to be frozen. ie. not
-            # trained. Can later also completely remove
+            # TODO: Allow some of the parameters to be frozen. ie. not trained. Can later also completely remove
             # TODO: the computation associated with these parameters.
             return -ll, -gradient
 
@@ -154,9 +132,7 @@ class Hacrf(object):
             return nll
 
         if self._optimizer:
-            self.optimizer_result = self._optimizer(_objective,
-                                                    self.parameters.flatten(),
-                                                    **self._optimizer_kwargs)
+            self.optimizer_result = self._optimizer(_objective, self.parameters.flatten(), **self._optimizer_kwargs)
             self.parameters = self.optimizer_result[0].reshape(self.parameters.shape)
         else:
             optimizer = lbfgs.LBFGS()
@@ -254,6 +230,7 @@ class Hacrf(object):
         self._optimizer = optimizer
         self._optimizer_kwargs = optimizer_kwargs
         return self
+
 
 class _Model(object):
     def __init__(self, state_machine, x, y=None):
