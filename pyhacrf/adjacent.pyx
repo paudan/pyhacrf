@@ -6,11 +6,12 @@ cimport numpy as np
 from numpy import ndarray
 from numpy cimport ndarray
 from numpy.math cimport INFINITY as inf
+cdef extern from "math.h" nogil :
+    np.float64_t log (np.float64_t x)
+    np.float64_t exp (np.float64_t x)
 #cdef extern from "fastlogexp.h" nogil :
 #    np.float64_t log "fastlog" (np.float64_t x)
 #    np.float64_t exp "fastexp" (np.float64_t x)
-log = np.log
-exp = np.exp
 
 cpdef dict forward(np.ndarray[np.float64_t, ndim=3] x_dot_parameters, int S):
     """ Helper to calculate the forward weights.  """
@@ -122,10 +123,9 @@ cpdef dict backward(np.ndarray[np.float64_t, ndim=3] x_dot_parameters, int S):
                 delete += x_dot_parameters[i, j + 1, deletion + s]
                 match += x_dot_parameters[i + 1, j + 1, matching + s]
                 
-                beta[i, j, s] = (x_dot_parameters[i, j, s] +
-                                 logaddexp(insert, logaddexp(delete, match)))
+                beta[i, j, s] = logaddexp(insert, logaddexp(delete, match))
 
-        beta[0, 0, s] -=  x_dot_parameters[0, 0, s]
+        #beta[0, 0, s] -= x_dot_parameters[0, 0, s]
 
 
     return beta
@@ -177,7 +177,7 @@ cpdef np.float64_t[:, :, ::1] forward_predict(np.float64_t[:, :, ::1] x_dot_para
 
     return alpha
 
-cdef np.float64_t logaddexp(np.float64_t x, np.float64_t y) :
+cdef np.float64_t logaddexp(np.float64_t x, np.float64_t y) nogil:
     cdef np.float64_t tmp
     if x == y :
         return x + log(2)

@@ -91,6 +91,9 @@ class AdjacentStateMachine(object):
     def __init__(self, classes) :
         self.n_states = len(classes)
         self.classes = classes
+        self.states_to_classes = {i: c
+                                  for i, c
+                                  in enumerate(classes)}
     
 
 class DefaultStateMachine(object):

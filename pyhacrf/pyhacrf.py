@@ -9,7 +9,7 @@ from .algorithms import forward, backward
 from .algorithms import forward_predict, forward_max_predict
 from .algorithms import gradient, gradient_sparse, populate_sparse_features, sparse_multiply
 import adjacent
-from .state_machine import DefaultStateMachine, AdjacentStateMachine
+from .state_machine import DefaultStateMachine
 
 
 class Hacrf(object):
@@ -72,10 +72,10 @@ class Hacrf(object):
         self._states_to_classes = None
         self._evaluation_count = None
 
-        if isinstance(state_machine, AdjacentStateMachine):
+        if isinstance(state_machine, DefaultStateMachine):
             self._Model = _AdjacentModel
         else:
-            self._Model = _SparseModel
+            self._Model = _GeneralModel
 
     def fit(self, X, y, verbosity=0):
         """
@@ -187,7 +187,7 @@ class Hacrf(object):
         
         parameters = np.ascontiguousarray(self.parameters.T)
 
-        predictions = [_SparseModel(self._state_machine, x).predict(parameters)
+        predictions = [self._Model(self._state_machine, x).predict(parameters)
                        for x in X]
         predictions = np.array([[probability
                                  for _, probability
@@ -253,17 +253,40 @@ class Hacrf(object):
         self._optimizer_kwargs = optimizer_kwargs
         return self
 
-
-class _DenseModel(object):
-    """ The actual model that implements the inference routines. """
+class _Model(object):
     def __init__(self, state_machine, x, y=None):
         self.state_machine = state_machine
         self.states_to_classes = state_machine.states_to_classes
         self.x = x
         self.y = y
-        self._lattice = self.state_machine.build_lattice(self.x)
 
-    def forward_backward(self, parameters):
+        if (self.x == 0).sum() * 1.0 / self.x.size > 0.6:
+            self.sparse_x = self._construct_sparse_features(self.x)
+            self.forward_backward = self.sparse_forward_backward
+        else:
+            self.forward_backward = self.dense_forward_backward
+
+    def predict(self, parameters):
+        """ Run forward algorithm to find the predicted distribution over classes. """
+        x_dot_parameters = np.einsum('ijk,kl->ijl', self.x, parameters)
+
+        alpha = self._forward_predict(x_dot_parameters)
+
+        I, J, _ = self.x.shape
+
+        class_Z = {}
+        Z = -np.inf
+
+        for state, predicted_class in self.states_to_classes.items():
+            weight = alpha[I - 1, J - 1, state]
+            class_Z[predicted_class] = weight
+            Z = np.logaddexp(Z, weight)
+
+        return {label: np.exp(class_z - Z)
+                for label, class_z
+                in class_Z.items()}
+
+    def dense_forward_backward(self, parameters):
         """ Run the forward backward algorithm with the given parameters. """
 
         I, J, K = self.x.shape
@@ -283,104 +306,9 @@ class _DenseModel(object):
         ll, deriv = gradient(alpha, beta, parameters, states_to_classes,
                              self.x, classes_to_ints[self.y], I, J, K)
         return ll, deriv
-
-    def predict(self, parameters):
-        """ Run forward algorithm to find the predicted distribution over classes. """
-        x_dot_parameters = np.einsum('ijk,kl->ijl', self.x, parameters)
-
-        alpha = forward_predict(self._lattice, x_dot_parameters,
-                                self.state_machine.n_states)
-
-        I, J, _ = self.x.shape
-
-        class_Z = {}
-        Z = -np.inf
-
-        for state, predicted_class in self.states_to_classes.items():
-            weight = alpha[I - 1, J - 1, state]
-            class_Z[self.states_to_classes[state]] = weight
-            Z = np.logaddexp(Z, weight)
-
-        return {label: np.exp(class_z - Z) for label, class_z in class_Z.items()}
-
-    def _forward(self, x_dot_parameters):
-        """ Helper to calculate the forward weights.  """
-        return forward(self._lattice, x_dot_parameters, 
-                       self.state_machine.n_states)
-
-    def _backward(self, x_dot_parameters):
-        """ Helper to calculate the backward weights.  """
-        I, J, _ = self.x.shape
-        return backward(self._lattice, x_dot_parameters, I, J,
-                        self.state_machine.n_states)
-
-class _AdjacentModel(_DenseModel):
-    def __init__(self, state_machine, x, y=None):
-        self.states_to_classes = {i: c for i, c in enumerate(state_machine.classes)}
-        self.state_machine = state_machine
-        self.x = x
-        self.y = y
-
-    def forward_backward(self, parameters):
-        """ Run the forward backward algorithm with the given parameters. """
-
-        I, J, K = self.x.shape
-        x_dot_parameters = np.einsum('ijk,kl->ijl', self.x, parameters)
-
-        alpha = self._forward(x_dot_parameters)
-        beta = self._backward(x_dot_parameters)
-        states_to_classes = np.array(sorted(self.states_to_classes.keys))
-
-        ll, deriv = gradient(alpha,
-                             beta,
-                             parameters,
-                             states_to_classes,
-                             self.x,
-                             classes_to_ints[self.y], I, J, K)
-        return ll, deriv
-
-    def predict(self, parameters):
-        """ Run forward algorithm to find the predicted distribution over classes. """
-        x_dot_parameters = np.einsum('ijk,kl->ijl', self.x, parameters)
-
-        alpha = adjecent.forward_predict(x_dot_parameters,
-                                         self.state_machine.n_states)
-
-        I, J, _ = self.x.shape
-
-        class_Z = {}
-        Z = -np.inf
-
-        for state, predicted_class in self.states_to_classes.items():
-            weight = alpha[I - 1, J - 1, state]
-            class_Z[predicted_class] = weight
-            Z = np.logaddexp(Z, weight)
-
-        return {label: np.exp(class_z - Z)
-                for label, class_z
-                in class_Z.items()}        
-
-    def _forward(self, x_dot_parameters) :
-        return adjacent.forward(x_dot_parameters,
-                                self.state_machine.n_states)
-
-    def _backward(self, x_dot_parameters) :
-        return adjacent.backward(x_dot_parameters,
-                                 self.state_machine.n_states)
-
-
-class _SparseModel(_DenseModel):
-    """ The actual model that implements the inference routines. """
     
-    def __init__(self, state_machine, x, y=None):
-        self.state_machine = state_machine
-        self.states_to_classes = state_machine.states_to_classes
-        self.x = x
-        self.sparse_x = self._construct_sparse_features(self.x)
-        self.y = y
-        self._lattice = self.state_machine.build_lattice(self.x)
 
-    def forward_backward(self, parameters):
+    def sparse_forward_backward(self, parameters):
         """ Run the forward backward algorithm with the given parameters. """
         I, J, K = self.x.shape
         C = self.sparse_x[0].shape[2]
@@ -420,3 +348,40 @@ class _SparseModel(_DenseModel):
         value_array = -np.ones((I, J, new_array_height), dtype='float64')
         populate_sparse_features(x, index_array, value_array, I, J, K)
         return index_array, value_array
+    
+        
+class _GeneralModel(_Model):
+    def __init__(self, state_machine, x, y=None):
+        super(_GeneralModel, self).__init__(state_machine, x, y)
+        self._lattice = self.state_machine.build_lattice(self.x)
+
+    def _forward(self, x_dot_parameters):
+        """ Helper to calculate the forward weights.  """
+        return forward(self._lattice, x_dot_parameters, 
+                       self.state_machine.n_states)
+
+    def _backward(self, x_dot_parameters):
+        """ Helper to calculate the backward weights.  """
+        I, J, _ = self.x.shape
+        return backward(self._lattice, x_dot_parameters, I, J,
+                        self.state_machine.n_states)
+
+    def _forward_predict(self, x_dot_parameters):
+        return forward_predict(self._lattice, x_dot_parameters,
+                               self.state_machine.n_states)
+        
+
+class _AdjacentModel(_Model):
+    def _forward(self, x_dot_parameters) :
+        return adjacent.forward(x_dot_parameters,
+                                self.state_machine.n_states)
+
+    def _backward(self, x_dot_parameters) :
+        return adjacent.backward(x_dot_parameters,
+                                 self.state_machine.n_states)
+
+    def _forward_predict(self, x_dot_parameters):
+        return adjacent.forward_predict(x_dot_parameters,
+                                        self.state_machine.n_states)
+
+    
