@@ -53,10 +53,7 @@ install:
 - cython pyhacrf/*.pyx
 - pip install -e .
 script:
-- pytest tests --cov pyhacrf
-after_success:
-- pip install coveralls
-- coveralls
+- pytest
 deploy:
 - provider: pypi
   skip_cleanup: true
