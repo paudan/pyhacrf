@@ -17,7 +17,7 @@ setup(
                            extra_compile_args = ["-ffast-math", "-O4"]),
                  Extension('pyhacrf.adjacent',
                            ['pyhacrf/adjacent.c'],
-                           include_diers=numpy.get_include(),
+                           include_dirs=numpy.get_include(),
                            extra_compile_args = ["-ffast-math", "-O4"])],
     url='https://github.com/datamade/pyhacrf',
     author='Dirko Coetsee',
