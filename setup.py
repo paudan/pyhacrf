@@ -14,9 +14,7 @@ if use_cython:
                                        extra_compile_args = ["-ffast-math", "-O4"],
                                        **numpy.distutils.misc_util.get_info('npymath')),
                              Extension('pyhacrf.adjacent',
-                                       ['pyhacrf/adjacent.pyx'],
-                                       include_dirs=[numpy.get_include()],
-                                       extra_compile_args = ["-ffast-math", "-O4"])])
+                                       ['pyhacrf/adjacent.pyx'])])
 else:
     ext_modules = [Extension('pyhacrf.algorithms',
                              ['pyhacrf/algorithms.c'],
