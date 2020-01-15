@@ -352,10 +352,7 @@ class _AdjacentModel(_Model):
     def forward_backward(self, parameters):
         """ Run the forward backward algorithm with the given parameters. """
 
-        I, J, K = self.x.shape
-
-        x_dot_parameters = np.dot(self.x,
-                                  parameters.T)
+        x_dot_parameters = np.einsum('ijk,lk->ijl', self.x, parameters)
 
         alpha = self._forward(x_dot_parameters)
         beta = self._backward(x_dot_parameters)
@@ -364,25 +361,19 @@ class _AdjacentModel(_Model):
                                    beta,
                                    self.x,
                                    self.state_machine.classes.index(self.y),
-                                   I,
-                                   J,
-                                   K,
                                    self.state_machine.n_states)
         return ll, deriv
     
 
-    def _gradient(self, alpha, beta, x, y, I, J, K, S):
+    def _gradient(self, alpha, beta, x, y, S):
         """Helper to calculate the marginals and from that the gradient given
            the forward and backward weights.
         """
 
         alphabeta = alpha + beta
 
-        Z = -float('inf')
-        for weight in alpha[I - 1, J - 1, :S]:
-            Z = np.logaddexp(Z, weight)
-
-        Z_y = alpha[I - 1, J - 1, y]
+        Z = np.logaddexp.reduce(alpha[-1, -1, :S])
+        Z_y = alpha[-1, -1, y]
         
         ab = -np.exp(alphabeta - Z)
         ab[:, :, y::S] += np.exp(alphabeta[:, :, y::S] - Z_y)
