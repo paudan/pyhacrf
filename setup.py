@@ -8,7 +8,7 @@ try:
 except ImportError:
     use_cython = False
 
-if use_cython:
+if True or use_cython:
     ext_modules = cythonize([Extension('pyhacrf.algorithms',
                                        ['pyhacrf/algorithms.pyx'],
                                        extra_compile_args = ["-ffast-math", "-O4"],
@@ -16,8 +16,7 @@ if use_cython:
                              Extension('pyhacrf.adjacent',
                                        ['pyhacrf/adjacent.pyx'],
                                        include_dirs=[numpy.get_include()],
-                                       extra_link_args=['-lm'],
-                                       extra_compile_args = ["-ffast-math", "-O4"])])
+                                       )])
 else:
     ext_modules = [Extension('pyhacrf.algorithms',
                              ['pyhacrf/algorithms.c'],
@@ -26,7 +25,8 @@ else:
                    Extension('pyhacrf.adjacent',
                              ['pyhacrf/adjacent.c'],
                              extra_link_args=['-lm'],
-                             include_dirs=[numpy.get_include()],
+                             include_dirs=[numpy.get_include(),
+                                           '~/work/pyhacrf/.env/lib/python3.7/site-packages/pythran/pythonic'],
                              extra_compile_args = ["-ffast-math", "-O4"])]
 
 
