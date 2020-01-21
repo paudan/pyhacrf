@@ -18,8 +18,8 @@ cpdef np.ndarray[np.float64_t, ndim=3] forward(np.ndarray[np.float64_t, ndim=3] 
     """ Helper to calculate the forward weights.  """
     cdef np.ndarray[np.float64_t, ndim=3] alpha = np.full_like(x_dot_parameters, -np.inf)
 
-    cdef int I, J
-    I, J = alpha.shape[0], alpha.shape[1]
+    # cdef int I, J
+    # I, J = alpha.shape[0], alpha.shape[1]
 
     # Fill in the edges of the state matrices
     #
@@ -28,11 +28,12 @@ cpdef np.ndarray[np.float64_t, ndim=3] forward(np.ndarray[np.float64_t, ndim=3] 
     # 1 x - - -
     # 2 x - - -
     # 3 x - - -
-    cdef int matching =  1 * S
-    cdef int deletion =  2 * S
-    cdef int insertion = 3 * S
-    cdef np.float64_t insert, delete, match
-    cdef int i, j, s 
+    # cdef int matching =  1 * S
+    # cdef int deletion =  2 * S
+    # cdef int insertion = 3 * S
+    # cdef np.float64_t insert, delete, match
+    # cdef int i, j, s
+    cdef int s
 
     for s in range(S):
         alpha[0, 0, s] = x_dot_parameters[0, 0, s]
