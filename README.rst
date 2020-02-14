@@ -57,8 +57,8 @@ Example
     predictions = model.predict(training_X_extracted)
 
     print(confusion_matrix(training_y, predictions))
-    > [[0 3]
-    >  [2 0]]
+    > [[3 0]
+    >  [0 2]]
 
     print(model.predict_proba(training_X_extracted))
     > [[ 0.94914812  0.05085188]
