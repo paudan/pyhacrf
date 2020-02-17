@@ -5,7 +5,6 @@
 
 import numpy as np
 import functools
-import itertools
 
 class PairFeatureExtractor(object):
     """Extract features from sequence pairs.
@@ -132,34 +131,35 @@ class PairFeatureExtractor(object):
                                        self._to_array(sequence2))
                 for sequence1, sequence2 in raw_X]
 
-    def _extract_features(self, array1, array2):
+
+    def _extract_features(self, sequence1, sequence2):
         """ Helper to extract features for one data point. """
 
-        feature_array = np.zeros((array1.size, array2.size, self.K),
-                                 dtype='float64')
+        K = (len(self._binary_features)
+             + sum(num_feats for _, num_feats in self._sparse_features))
 
-        for k, feature_function in enumerate(self._binary_features):
-            feature_array[..., k] = feature_function(array1, array2)
+        feature_array = np.zeros((len(sequence1), len(sequence2), K), dtype='float64')
+
+        for i in range(len(sequence1)):
+            for j in range(len(sequence2)):
+                for k, feature_function in enumerate(self._binary_features):
+                    feature_array[i, j, k] = feature_function(i, j, sequence1, sequence2)
 
         if self._sparse_features:
-            array1 = array1.T[0]
-            array2 = array2[0]
             n_binary_features = len(self._binary_features)
 
-            for i, j in np.ndindex(array1.size, array2.size):
+            for i, j in np.ndindex(len(sequence1), len(sequence2)):
                 k = n_binary_features
 
                 for feature_function, num_features in self._sparse_features:
-                    
-                    feature_array[i, j, k + feature_function(i, j, array1, array2)] = 1.0
+
+                    feature_array[i, j, k + feature_function(i, j, sequence1, sequence2)] = 1.0
                     k += num_features
 
         return feature_array
 
     def _to_array(self, sequence):
         return np.array(tuple(sequence), ndmin=2)
-
-
 
 
 class StringPairFeatureExtractor(PairFeatureExtractor):
