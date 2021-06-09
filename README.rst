@@ -9,6 +9,8 @@ pyhacrf
 Hidden alignment conditional random field for classifying string pairs -
 a learnable edit distance.
 
+Part of the Dedupe.io cloud service and open source toolset for de-duplicating and finding fuzzy matches in your data: https://dedupe.io
+
 This package aims to implement the HACRF machine learning model with a
 ``sklearn``-like interface. It includes ways to fit a model to training
 examples and score new example.
